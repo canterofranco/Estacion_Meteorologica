@@ -32,3 +32,4 @@ class SensorAmbiente:
             return temperatura, presion, humedad
         except:
             return None, None, None
+        

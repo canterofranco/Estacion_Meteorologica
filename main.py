@@ -1,9 +1,10 @@
-
 from mqtt_as import MQTTClient
 from mqtt_local import config
 import uasyncio as asyncio
 from sensores.temp_hum_presion import SensorAmbiente
-from sensores.anemometro import AsyncPin  # <--- IMPORTAMOS TU CLASE
+from sensores.anemometro import AsyncPin
+from sensores.intensidad_luminica import SensorLuz
+from sensores.veleta import Veleta
 from machine import Pin
 
 # ==========================================
@@ -32,14 +33,19 @@ async def main(client):
     # Creamos el objeto del sensor
     estacion_clima = SensorAmbiente(sda_pin=14, scl_pin=15)
     anemometro = AsyncPin(22, Pin.IRQ_RISING) # <--- INSTANCIAMOS ANEMÓMETRO
+    luxometro = SensorLuz(sda_pin=0, scl_pin=1)
+    veleta = Veleta(28)
 
     asyncio.create_task(anemometro.wait_edge())
+    #asyncio.create_task(veleta.leer_direccion())  # <--- INICIAMOS TAREA DE VELETA
     
 
     while True:
         # 1. Adquisición
         temp, pres, hum = estacion_clima.leer_todo()
         vel = anemometro.leer_velocidad()
+        luz = luxometro.leer_lux()
+        direccion = await veleta.leer_direccion()  # <--- LEEMOS DIRECCIÓN DE VELETA
 
         
         # 2. Verificación y Publicación
@@ -51,10 +57,19 @@ async def main(client):
         else:
             print("Esperando lectura válida del BME280...")
 
+        if luz is not None:
+            print(f"Publicado -> Luz: {luz:.1f} Lux")
+            await client.publish('estacion/luz', f"{luz:.1f} Lux", qos=1)
+        else:
+            print("No se pudo leer la intensidad lumínica")
+
+        print(f"Publicado -> Dirección del viento: {direccion}")
+
         await client.publish('estacion/viento', f"{vel:.1f} m/s", qos=1)
+        await client.publish('estacion/direccion', direccion, qos=1)
             
         # 3. Pausa operativa
-        await asyncio.sleep(5)
+        await asyncio.sleep(2)
 
 
 
@@ -65,8 +80,8 @@ config['wifi_coro'] = wifi_han
 config['connect_coro'] = conn_han
 config['subs_cb'] = sub_cb
 
-# IMPORTANTE: Cambiá esto a True si usas un broker online (ej. HiveMQ/Adafruit)
-# o dejalo en False si es un broker local en red (ej. Mosquitto sin encriptar)
+# IMPORTANTE: Cambiar esto a True si se usa un broker online
+# o dejar en False si es un broker local en red
 config['ssl'] = True
 
 MQTTClient.DEBUG = True  
